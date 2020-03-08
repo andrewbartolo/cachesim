@@ -121,11 +121,11 @@ void Cache::printStats() {
     std::cout << "------------ Cache Statistics ------------" << std::endl;
     // use printf, since it's nicer
     printf("L1:    RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L1RH, s.L1RHP*100,
-            s.L1WH, s.L1WHP);
+            s.L1WH, s.L1WHP*100);
     printf("L2:    RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L2RH, s.L2RHP*100,
-            s.L2WH, s.L2WHP);
+            s.L2WH, s.L2WHP*100);
     printf("Mem:   RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L2RM, s.L2RMP*100,
-            s.L2WM, s.L2WMP);
+            s.L2WM, s.L2WMP*100);
 }
 
 
