@@ -112,6 +112,14 @@ Cache::stats_t *Cache::getStats() {
     return &s;
 }
 
+/*
+ * Used for terminating the warmup phase. Zeroes stats counters while leaving
+ * the maps and lists that actually store the accessed locations intact.
+ */
+void Cache::zeroStatsCounters() {
+    memset(&s, 0, sizeof(s));
+}
+
 void Cache::printStats() {
     if (!s.computedFinalStats) {
         std::cout << "Stats not computed yet; computing..." << std::endl;

@@ -34,6 +34,7 @@ class Cache {
         uint64_t getCacheLineSizeLog2();
         void computeStats();
         stats_t *getStats();
+        void zeroStatsCounters();
         void printStats();
 
 
