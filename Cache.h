@@ -17,6 +17,58 @@ typedef uintptr_t line_addr_t;
 typedef std::unordered_map<line_addr_t, std::list<line_addr_t>::iterator> map_t;
 typedef std::list<line_addr_t> list_t;
 
+class SimpleCache {
+    public:
+        typedef struct {
+            size_t RH, RM;
+            size_t WH, WM;
+
+            bool computedFinalStats;
+            size_t nR, nW;
+            size_t nH, nM, nE;
+            double RHP, RMP;
+            double WHP, WMP;
+            double EP;
+        } stats_t;
+
+        SimpleCache(size_t nLines, size_t nWays, size_t nBanks,
+                size_t cacheLineNBytes, bool allocateOnWritesOnly);
+        uint64_t getCacheLineSizeLog2();
+        void computeStats();
+        stats_t *getStats();
+        void zeroStatsCounters();
+        void printStats();
+
+        // TODO forward (to higher cache levels or memory/RAMulator)
+
+    protected:
+        size_t nLines, nWays, nSetsPerBank, nBanks;
+        size_t cacheLineSizeLog2;
+        bool allocateOnWritesOnly;  // act like a write-only buffer
+
+        stats_t s;
+
+        inline line_addr_t addrToLineAddr(intptr_t addr);
+        inline uint32_t fastHash(line_addr_t lineAddr, uint64_t maxSize);
+        inline size_t lineToLXSet(line_addr_t lineAddr, size_t nSets);
+        bool touchLine(line_addr_t line, map_t &map, list_t &list,
+                size_t nWays, bool allocateOnWritesOnly, bool isWrite);
+};
+
+class LRUSimpleCache : public SimpleCache {
+    public:
+        LRUSimpleCache(size_t nLines, size_t nWays, size_t nBanks,
+                size_t cacheLineNBytes, bool allocateOnWritesOnly);
+        void access(uintptr_t addr, bool isWrite);
+
+    protected:
+        std::vector<std::vector<map_t>>  maps;   // 2-D vector of maps
+        std::vector<std::vector<list_t>> lists;  // 2-D vector of lists
+
+};
+
+// TODO: CompoundCache with modular forwarding
+
 class Cache {
     public:
         typedef struct {

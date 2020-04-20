@@ -9,6 +9,8 @@
 #include "Cache.h"
 
 
+
+
 /*
  * Generates 1-byte-offset reads, and asserts that every one except the first in
  * the cache line hits in the L1 (while the others miss the caches entirely).
@@ -141,15 +143,105 @@ void test4() {
     printf("%s complete.\n", __func__);
 }
 
+/*
+ *
+ */
+void test5() {
+    printf("Running %s...\n", __func__);
+
+    /* nLines, nWays, nBanks, cacheLineNBytes, allocateOnWritesOnly */
+    auto c = LRUSimpleCache(1048576, 8, 1, 64, true);
+
+    size_t nLines = 1048576;
+    size_t lineSize = 64;
+
+    // pass 1
+    for (size_t i = 0; i < nLines; ++i) {
+        intptr_t addr = i * lineSize;
+        bool isWrite = false;
+        c.access(addr, isWrite);
+    }
+    // pass 2
+    for (size_t i = 0; i < nLines; ++i) {
+        intptr_t addr = i * lineSize;
+        bool isWrite = false;
+        c.access(addr, isWrite);
+    }
+
+    // ensure that all of these are misses (since reads don't fault in)
+    c.printStats();
+    auto s = c.getStats();
+    assert(s->RH == 0);
+
+    printf("%s complete.\n", __func__);
+}
+
+
+/*
+ *
+ */
+void test6() {
+    printf("Running %s...\n", __func__);
+
+    /* nLines, nWays, nBanks, cacheLineNBytes, allocateOnWritesOnly */
+    auto c = LRUSimpleCache(1048576, 8, 1, 64, true);
+
+    size_t nLines = 1048576;
+    size_t lineSize = 64;
+
+    // pass 1: all writes
+    for (size_t i = 0; i < nLines; ++i) {
+        intptr_t addr = i * lineSize;
+        bool isWrite = false;
+        c.access(addr, isWrite);
+    }
+    // pass 2: all writes
+    for (size_t i = 0; i < nLines; ++i) {
+        intptr_t addr = i * lineSize;
+        bool isWrite = true;
+        c.access(addr, isWrite);
+    }
+    // pass 3: all reads
+    for (size_t i = 0; i < nLines; ++i) {
+        intptr_t addr = i * lineSize;
+        bool isWrite = false;
+        c.access(addr, isWrite);
+    }
+    // pass 4: all writes again
+    for (size_t i = 0; i < nLines; ++i) {
+        intptr_t addr = i * lineSize;
+        bool isWrite = true;
+        c.access(addr, isWrite);
+    }
+
+
+    // ensure that number of hit
+    c.printStats();
+    auto s = c.getStats();
+
+    assert(s->RM == nLines);
+    assert(s->WM == nLines);
+    assert(s->RH == nLines);
+    assert(s->WH == nLines);
+
+    printf("%s complete.\n", __func__);
+}
 
 
 int main(int argc, char *argv[]) {
     std::cout << "Cachesim test suite" << std::endl;
 
+    // LRUCache tests
+    #if 0
     test1();
     test2();
     test3();
     test4();
+    #endif
+
+    //LRUSimpleCache tests
+    test5();
+    test6();
 
     return 0;
 }

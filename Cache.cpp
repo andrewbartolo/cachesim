@@ -16,6 +16,183 @@
 
 
 /* Base class definitions */
+SimpleCache::SimpleCache(size_t nLines, size_t nWays, size_t nBanks,
+        size_t cacheLineNBytes, bool allocateOnWritesOnly) {
+    this->nLines = nLines;
+    this->nWays = nWays;
+    assert(nLines % nWays == 0);
+    this->nBanks = nBanks;
+    assert(nLines % nBanks == 0);
+    this->nSetsPerBank = (nLines / nBanks) / nWays;
+
+    // zero the stats struct
+    memset(&this->s, 0, sizeof(this->s));
+
+    this->cacheLineSizeLog2 = log2(cacheLineNBytes);
+    this->allocateOnWritesOnly = allocateOnWritesOnly;
+}
+
+inline uint32_t SimpleCache::fastHash(line_addr_t lineAddr, uint64_t maxSize) {
+    uint32_t res = 0;
+    uint64_t tmp = lineAddr;
+    for (uint32_t i = 0; i < 4; i++) {
+        res ^= (uint32_t) ( ((uint64_t)0xffff) & tmp);
+        tmp = tmp >> 16;
+    }
+    return (res % maxSize);
+}
+
+inline line_addr_t SimpleCache::addrToLineAddr(intptr_t addr) {
+    return addr >> cacheLineSizeLog2;
+}
+
+inline size_t SimpleCache::lineToLXSet(line_addr_t lineAddr, size_t nSets) {
+    return lineAddr & (line_addr_t(nSets-1));
+}
+
+
+/*
+ * "Touches" (emplaces) a line in the cache determined by the passed-in
+ * (map, list, n_ways). Parameterized this way to support L1, L2, etc.
+ *
+ * Return value: whether/not the touch action was a hit.
+ */
+bool SimpleCache::touchLine(line_addr_t line, map_t &map, list_t &list,
+        size_t nWays, bool allocateOnWritesOnly, bool isWrite) {
+    bool wasInCache = map.count(line) != 0;
+
+    bool shouldEvict = !allocateOnWritesOnly or
+            (allocateOnWritesOnly and isWrite);
+
+    bool shouldAppend = shouldEvict or wasInCache;
+
+    // delete ourself (will re-add at list end later)
+    // Note: we need to update our timestamp (order) regardless of R/W
+    if (wasInCache) {
+        list.erase(map[line]);
+        map.erase(line);
+    }
+    else if (map.size() == nWays and shouldEvict) {  // kick somebody else out
+        // evict the head of the list (LRU)
+        auto otherItToEvict = list.begin();
+        auto otherToEvict = *otherItToEvict;
+
+        list.erase(otherItToEvict);
+        map.erase(otherToEvict);
+
+        ++s.nE;     // record the eviction
+    }
+
+    // "touch" (emplace the line at back) to update it for LRU
+    if (shouldAppend) {
+        list.emplace_back(line);
+        auto insertedIt = std::prev(list.end());  // get the last actual element
+        map.emplace(line, insertedIt);
+    }
+
+    return wasInCache;
+}
+
+uint64_t SimpleCache::getCacheLineSizeLog2() {
+    return cacheLineSizeLog2;
+}
+
+void SimpleCache::computeStats() {
+    s.nR = s.RH + s.RM;
+    s.nW = s.WH + s.WM;
+
+    s.nH = s.RH + s.WH;
+    s.nM = s.RM + s.WM;
+
+    if (s.nR != 0) {
+        s.RHP = double(s.RH) / double(s.nR);
+        s.RMP = double(s.RM) / double(s.nR);
+    }
+    if (s.nW != 0) {
+        s.WHP = double(s.WH) / double(s.nW);
+        s.WMP = double(s.WM) / double(s.nW);
+    }
+
+    if (s.nM != 0) {
+        s.EP = double(s.nE) / double(s.nM);
+    }
+
+    s.computedFinalStats = true;
+}
+
+SimpleCache::stats_t *SimpleCache::getStats() {
+    return &s;
+}
+
+/*
+ * Used for terminating the warmup phase. Zeroes stats counters while leaving
+ * the maps and lists that actually store the accessed locations intact.
+ */
+void SimpleCache::zeroStatsCounters() {
+    memset(&s, 0, sizeof(s));
+}
+
+void SimpleCache::printStats() {
+    if (!s.computedFinalStats) {
+        std::cerr << "Stats not computed yet; computing..." << std::endl;
+        computeStats();
+    }
+
+    std::cerr << "------------ Cache Statistics ------------" << std::endl;
+    // use printf, since it's nicer
+    fprintf(stderr, "READ_HITS\t%zu (%.2f%%)\n", s.RH, s.RHP*100);
+    fprintf(stderr, "WRITE_HITS\t%zu (%.2f%%)\n", s.WH, s.WHP*100);
+    fprintf(stderr, "READ_MISSES\t%zu (%.2f%%)\n", s.RM, s.RMP*100);
+    fprintf(stderr, "WRITE_MISSES\t%zu (%.2f%%)\n", s.WM, s.WMP*100);
+    fprintf(stderr, "EVICTIONS\t%zu (%.2f%%)\n", s.nE, s.EP*100);
+}
+
+
+/* Derived class definitions */
+LRUSimpleCache::LRUSimpleCache(size_t nLines, size_t nWays, size_t nBanks,
+        size_t cacheLineNBytes, bool allocateOnWritesOnly) : SimpleCache(
+        nLines, nWays, nBanks, cacheLineNBytes, allocateOnWritesOnly) {
+
+    // initialize the 2-D maps + lists (to support banks)
+    maps = std::vector<std::vector<map_t>>(nBanks,
+            std::vector<map_t>(nSetsPerBank));
+    lists = std::vector<std::vector<list_t>>(nBanks,
+            std::vector<list_t>(nSetsPerBank));
+
+    std::cerr << "done initializing data structures" << std::endl;
+}
+
+void LRUSimpleCache::access(uintptr_t addr, bool isWrite) {
+    line_addr_t lineAddr = addrToLineAddr(addr);
+
+    // NOTE: want constant propagation w/these, may not get it
+    // Why do we only take LSBs for set, but hash banks?
+    // 1. Because sets are about optimizing for capacity utilization, and
+    // 2. Because banks are about optimizing for concurrency
+    size_t set = lineToLXSet(lineAddr, nSetsPerBank);
+    size_t bank = fastHash(lineAddr, nBanks);
+
+    // retrieve the correct map and list for the Way
+    auto &map = maps[bank][set];
+    auto &list = lists[bank][set];
+
+    bool wasHit = touchLine(lineAddr, map, list, nWays, allocateOnWritesOnly,
+            isWrite);
+
+    // record stats
+    if (!isWrite) wasHit ? ++s.RH : ++s.RM;
+    else          wasHit ? ++s.WH : ++s.WM;
+}
+
+
+
+
+
+
+
+
+
+/* Base class definitions */
 Cache::Cache(size_t L1NLines, size_t L1NWays, size_t L2NLines, size_t L2NWays,
         size_t L2NBanks, size_t cacheLineNBytes) {
     this->L1NLines = L1NLines;
@@ -122,18 +299,18 @@ void Cache::zeroStatsCounters() {
 
 void Cache::printStats() {
     if (!s.computedFinalStats) {
-        std::cout << "Stats not computed yet; computing..." << std::endl;
+        std::cerr << "Stats not computed yet; computing..." << std::endl;
         computeStats();
     }
 
-    std::cout << "------------ Cache Statistics ------------" << std::endl;
+    std::cerr << "------------ Cache Statistics ------------" << std::endl;
     // use printf, since it's nicer
-    printf("L1:    RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L1RH, s.L1RHP*100,
-            s.L1WH, s.L1WHP*100);
-    printf("L2:    RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L2RH, s.L2RHP*100,
-            s.L2WH, s.L2WHP*100);
-    printf("Mem:   RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L2RM, s.L2RMP*100,
-            s.L2WM, s.L2WMP*100);
+    fprintf(stderr, "L1:    RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L1RH,
+            s.L1RHP*100, s.L1WH, s.L1WHP*100);
+    fprintf(stderr, "L2:    RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L2RH,
+            s.L2RHP*100, s.L2WH, s.L2WHP*100);
+    fprintf(stderr, "Mem:   RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L2RM,
+            s.L2RMP*100, s.L2WM, s.L2WMP*100);
 }
 
 
@@ -152,7 +329,7 @@ LRUCache::LRUCache(size_t L1NLines, size_t L1NWays, size_t L2NLines,
     L2Lists = std::vector<std::vector<list_t>>(L2NBanks,
             std::vector<list_t>(L2NSetsPerBank));
 
-    std::cout << "done initializing data structures" << std::endl;
+    std::cerr << "done initializing data structures" << std::endl;
 }
 
 void LRUCache::access(uintptr_t addr, bool isWrite) {
