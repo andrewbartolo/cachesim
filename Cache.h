@@ -38,6 +38,7 @@ class SimpleCache {
         stats_t *getStats();
         void zeroStatsCounters();
         void printStats();
+        void dumpBinaryStats(char *outputDir);
 
         // TODO forward (to higher cache levels or memory/RAMulator)
 
@@ -47,12 +48,14 @@ class SimpleCache {
         bool allocateOnWritesOnly;  // act like a write-only buffer
 
         stats_t s;
+        std::unordered_map<line_addr_t, int64_t> evictedLines;
 
         inline line_addr_t addrToLineAddr(intptr_t addr);
         inline uint32_t fastHash(line_addr_t lineAddr, uint64_t maxSize);
         inline size_t lineToLXSet(line_addr_t lineAddr, size_t nSets);
         bool touchLine(line_addr_t line, map_t &map, list_t &list,
                 size_t nWays, bool allocateOnWritesOnly, bool isWrite);
+        void logEvictedLine(line_addr_t line);
 };
 
 class LRUSimpleCache : public SimpleCache {
