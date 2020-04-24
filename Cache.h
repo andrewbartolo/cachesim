@@ -14,6 +14,7 @@
 #include <vector>
 
 typedef uintptr_t line_addr_t;
+typedef uintptr_t word_addr_t;
 typedef std::unordered_map<line_addr_t, std::list<line_addr_t>::iterator> map_t;
 typedef std::list<line_addr_t> list_t;
 
@@ -70,8 +71,27 @@ class LRUSimpleCache : public SimpleCache {
 
 };
 
-// TODO: CompoundCache with modular forwarding
 
+class HistogramCounter {
+    public:
+        HistogramCounter(size_t bytesPerWord);
+        void access(uintptr_t addr, bool isWrite);
+        void zeroStatsCounters();
+        void dumpBinaryStats(char *outputDir);
+
+    private:
+        typedef struct {
+            int64_t nReads;
+            int64_t nWrites;
+        } histogram_entry_t;
+
+        size_t bytesPerWordLog2;
+        inline word_addr_t addrToWordAddr(intptr_t addr);
+        std::unordered_map<word_addr_t, histogram_entry_t> hist;
+};
+
+
+// TODO: CompoundCache with modular forwarding
 class Cache {
     public:
         typedef struct {

@@ -226,7 +226,51 @@ void LRUSimpleCache::access(uintptr_t addr, bool isWrite) {
 
 
 
+HistogramCounter::HistogramCounter(size_t bytesPerWord) {
+    this->bytesPerWordLog2 = log2(bytesPerWord);
+};
 
+inline word_addr_t HistogramCounter::addrToWordAddr(intptr_t addr) {
+    return addr >> bytesPerWordLog2;
+}
+
+void HistogramCounter::access(uintptr_t addr, bool isWrite) {
+    word_addr_t wordAddr = addrToWordAddr(addr);
+
+    // because our hist value is a composite type (struct), we need to
+    // make sure it's initialized before inserting a new one
+    auto it = hist.find(wordAddr);
+    if (it == hist.end()) {
+        hist[wordAddr] = { isWrite ? 0 : 1, isWrite ? 1 : 0 };
+    }
+    else {
+        isWrite ? ++(it->second.nWrites) : ++(it->second.nReads);
+    }
+}
+
+void HistogramCounter::zeroStatsCounters() {
+    hist.clear();
+}
+
+void HistogramCounter::dumpBinaryStats(char *outputDir) {
+    fprintf(stderr, "Dumping binary stats...\n");
+
+    std::stringstream outFilename;
+    // use the caller's own TID as a cheap way of disambiguating dumps from
+    // multiple threads.
+    outFilename << outputDir << "/" << syscall(SYS_gettid) << ".npbin";
+
+    std::ofstream of(outFilename.str(), std::ios::out | std::ios::binary);
+
+    for (auto &kv : hist) {
+        // write the combined 3-tuple (addr, nReads, nWrites) to the file
+        of.write((char *)&kv.first, sizeof(kv.first));
+        of.write((char *)&kv.second.nReads, sizeof(kv.second.nReads));
+        of.write((char *)&kv.second.nWrites, sizeof(kv.second.nWrites));
+    }
+
+    of.close();
+}
 
 
 
