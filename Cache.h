@@ -48,15 +48,18 @@ class SimpleCache {
         size_t cacheLineSizeLog2;
         bool allocateOnWritesOnly;  // act like a write-only buffer
 
+        typedef struct {
+            int64_t nReads;
+            int64_t nWrites;
+        } miss_stats_t;     // stored per-address in a map
+
         stats_t s;
-        std::unordered_map<line_addr_t, int64_t> evictedLines;
+        std::unordered_map<line_addr_t, miss_stats_t> misses;
 
         inline line_addr_t addrToLineAddr(intptr_t addr);
         inline uint32_t fastHash(line_addr_t lineAddr, uint64_t maxSize);
         inline size_t lineToLXSet(line_addr_t lineAddr, size_t nSets);
-        bool touchLine(line_addr_t line, map_t &map, list_t &list,
-                size_t nWays, bool allocateOnWritesOnly, bool isWrite);
-        void logEvictedLine(line_addr_t line);
+        void logMiss(line_addr_t line, bool isWrite);
 };
 
 class LRUSimpleCache : public SimpleCache {
@@ -64,6 +67,9 @@ class LRUSimpleCache : public SimpleCache {
         LRUSimpleCache(size_t nLines, size_t nWays, size_t nBanks,
                 size_t cacheLineNBytes, bool allocateOnWritesOnly);
         void access(uintptr_t addr, bool isWrite);
+        bool touchLine(line_addr_t lineAddr, map_t &map, list_t &list,
+                size_t nWays, bool allocateOnWritesOnly, bool isWrite);
+
 
     protected:
         std::vector<std::vector<map_t>>  maps;   // 2-D vector of maps

@@ -56,54 +56,21 @@ inline size_t SimpleCache::lineToLXSet(line_addr_t lineAddr, size_t nSets) {
 
 /*
  * Uses a hash map counter to keep count of how many times a region of backing
- * memory has been evicted to.
+ * memory has been evicted to, or read from.
  */
-void SimpleCache::logEvictedLine(line_addr_t line) {
-    ++evictedLines[line];
+void SimpleCache::logMiss(line_addr_t line, bool isWrite) {
+    // because our hist value is a composite type (struct), we need to
+    // make sure it's initialized before inserting a new one
+    auto it = misses.find(line);
+    if (it == misses.end()) {
+        misses[line] = { isWrite ? 0 : 1, isWrite ? 1 : 0 };
+    }
+    else {
+        isWrite ? ++(it->second.nWrites) : ++(it->second.nReads);
+    }
 }
 
-/*
- * "Touches" (emplaces) a line in the cache determined by the passed-in
- * (map, list, n_ways). Parameterized this way to support L1, L2, etc.
- *
- * Return value: whether/not the touch action was a hit.
- */
-bool SimpleCache::touchLine(line_addr_t line, map_t &map, list_t &list,
-        size_t nWays, bool allocateOnWritesOnly, bool isWrite) {
-    bool wasInCache = map.count(line) != 0;
 
-    bool shouldEvict = !allocateOnWritesOnly or
-            (allocateOnWritesOnly and isWrite);
-
-    bool shouldAppend = shouldEvict or wasInCache;
-
-    // delete ourself (will re-add at list end later)
-    // Note: we need to update our timestamp (order) regardless of R/W
-    if (wasInCache) {
-        list.erase(map[line]);
-        map.erase(line);
-    }
-    else if (map.size() == nWays and shouldEvict) {  // kick somebody else out
-        // evict the head of the list (LRU)
-        auto otherItToEvict = list.begin();
-        auto otherToEvict = *otherItToEvict;
-
-        list.erase(otherItToEvict);
-        map.erase(otherToEvict);
-
-        ++s.nE;     // record the eviction
-        logEvictedLine(otherToEvict);
-    }
-
-    // "touch" (emplace the line at back) to update it for LRU
-    if (shouldAppend) {
-        list.emplace_back(line);
-        auto insertedIt = std::prev(list.end());  // get the last actual element
-        map.emplace(line, insertedIt);
-    }
-
-    return wasInCache;
-}
 
 uint64_t SimpleCache::getCacheLineSizeLog2() {
     return cacheLineSizeLog2;
@@ -142,7 +109,7 @@ SimpleCache::stats_t *SimpleCache::getStats() {
  */
 void SimpleCache::zeroStatsCounters() {
     memset(&s, 0, sizeof(s));
-    evictedLines.clear();
+    misses.clear();
 }
 
 void SimpleCache::printStats() {
@@ -161,8 +128,8 @@ void SimpleCache::printStats() {
 }
 
 void SimpleCache::dumpBinaryStats(char *outputDir) {
-    fprintf(stderr, "There were %zu addrs in the evictions log\n",
-            evictedLines.size());
+    fprintf(stderr, "There were %zu addrs in the missed-addresses log\n",
+            misses.size());
 
     std::stringstream outFilename;
     // use the caller's own TID as a cheap way of disambiguating dumps from
@@ -171,19 +138,14 @@ void SimpleCache::dumpBinaryStats(char *outputDir) {
 
     std::ofstream of(outFilename.str(), std::ios::out | std::ios::binary);
 
-    for (auto &kv : evictedLines) {
-        // write a 2-tuple (addr, count)
+    for (auto &kv : misses) {
+        // write the combined 3-tuple (addr, nReads, nWrites) to the file
         of.write((char *)&kv.first, sizeof(kv.first));
-        of.write((char *)&kv.second, sizeof(kv.second));
+        of.write((char *)&kv.second.nReads, sizeof(kv.second.nReads));
+        of.write((char *)&kv.second.nWrites, sizeof(kv.second.nWrites));
     }
 
     of.close();
-
-#if 0
-    for (auto &kv : evictedLines) {
-        fprintf(stderr, "L0x%lx : %zd\n", kv.first, kv.second);
-    }
-#endif
 }
 
 
@@ -199,6 +161,51 @@ LRUSimpleCache::LRUSimpleCache(size_t nLines, size_t nWays, size_t nBanks,
             std::vector<list_t>(nSetsPerBank));
 
     std::cerr << "done initializing data structures" << std::endl;
+}
+
+/*
+ * "Touches" (emplaces) a line in the cache determined by the passed-in
+ * (map, list, n_ways).
+ *
+ * Return value: whether/not the touch action was a hit.
+ */
+bool LRUSimpleCache::touchLine(line_addr_t line, map_t &map, list_t &list,
+        size_t nWays, bool allocateOnWritesOnly, bool isWrite) {
+    bool wasInCache = map.count(line) != 0;
+
+    bool shouldEvict = !allocateOnWritesOnly or
+            (allocateOnWritesOnly and isWrite);
+
+    bool shouldAppend = shouldEvict or wasInCache;
+
+    // delete ourself (will re-add at list end later)
+    // Note: we need to update our timestamp (order) regardless of R/W
+    if (wasInCache) {
+        list.erase(map[line]);
+        map.erase(line);
+    }
+    else if (map.size() == nWays and shouldEvict) {  // kick somebody else out
+        // evict the head of the list (LRU)
+        auto otherItToEvict = list.begin();
+        auto otherToEvict = *otherItToEvict;
+
+        list.erase(otherItToEvict);
+        map.erase(otherToEvict);
+
+        ++s.nE;     // record the eviction
+        logMiss(otherToEvict, true);
+    }
+
+    // "touch" (emplace the line at back) to update it for LRU
+    if (shouldAppend) {
+        list.emplace_back(line);
+        auto insertedIt = std::prev(list.end());  // get the last actual element
+        map.emplace(line, insertedIt);
+    }
+
+    if (!wasInCache and !isWrite) logMiss(line, false);    // log the read miss
+
+    return wasInCache;
 }
 
 void LRUSimpleCache::access(uintptr_t addr, bool isWrite) {
@@ -222,6 +229,8 @@ void LRUSimpleCache::access(uintptr_t addr, bool isWrite) {
     if (!isWrite) wasHit ? ++s.RH : ++s.RM;
     else          wasHit ? ++s.WH : ++s.WM;
 }
+
+
 
 
 
