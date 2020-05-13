@@ -77,6 +77,18 @@ class LRUSimpleCache : public SimpleCache {
 
 };
 
+class Network {
+    public:
+        Network(int ourGlobalRank);
+        void sendTo(int destID, size_t nBytes);
+        void zeroStatsCounters();
+        void printStats();
+
+    private:
+        int ourGlobalRank;
+        std::unordered_map<int, size_t> destBytes;
+};
+
 
 class HistogramCounter {
     public:

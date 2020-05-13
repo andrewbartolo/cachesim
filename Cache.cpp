@@ -282,6 +282,34 @@ void HistogramCounter::dumpBinaryStats(char *outputDir) {
 }
 
 
+Network::Network(int ourGlobalRank) {
+    this->ourGlobalRank = ourGlobalRank;
+}
+
+void Network::sendTo(int destID, size_t nBytes) {
+    destBytes[destID] += nBytes;
+}
+
+void Network::zeroStatsCounters() {
+    destBytes.clear();
+}
+
+void Network::printStats() {
+    std::cerr << "------------ Network Statistics ------------" << std::endl;
+
+    // just do the total summation within the print loop itself
+    size_t totalBytesSent = 0;
+    for (auto &kv : destBytes) {
+        int dest = kv.first;
+        size_t nBytes = kv.second;
+        fprintf(stderr, "%d => %d : %zu bytes\n", ourGlobalRank, dest, nBytes);
+
+        totalBytesSent += nBytes;
+    }
+
+    fprintf(stderr, "Total bytes sent by us (%d): %zu\n", ourGlobalRank,
+            totalBytesSent);
+}
 
 
 /* Base class definitions */
