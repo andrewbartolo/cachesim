@@ -282,7 +282,16 @@ void HistogramCounter::dumpBinaryStats(char *outputDir) {
 }
 
 
+Network::Network() {
+    // use placeholder of -1 for our global rank until we fill it in
+    this->ourGlobalRank = -1;
+}
+
 Network::Network(int ourGlobalRank) {
+    this->ourGlobalRank = ourGlobalRank;
+}
+
+void Network::setOurGlobalRank(int ourGlobalRank) {
     this->ourGlobalRank = ourGlobalRank;
 }
 

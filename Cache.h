@@ -79,7 +79,9 @@ class LRUSimpleCache : public SimpleCache {
 
 class Network {
     public:
+        Network();
         Network(int ourGlobalRank);
+        void setOurGlobalRank(int ourGlobalRank);
         void sendTo(int destID, size_t nBytes);
         void zeroStatsCounters();
         void printStats();
