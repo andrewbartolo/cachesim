@@ -112,31 +112,34 @@ void SimpleCache::zeroStatsCounters() {
     misses.clear();
 }
 
-void SimpleCache::printStats() {
+void SimpleCache::dumpTextStats(FILE * const f) {
     if (!s.computedFinalStats) {
-        std::cerr << "Stats not computed yet; computing..." << std::endl;
+        fprintf(f, "Stats not computed yet; computing...\n");
         computeStats();
     }
 
-    std::cerr << "------------ Cache Statistics ------------" << std::endl;
-    // use printf, since it's nicer
-    fprintf(stderr, "READ_HITS\t%zu (%.2f%%)\n", s.RH, s.RHP*100);
-    fprintf(stderr, "WRITE_HITS\t%zu (%.2f%%)\n", s.WH, s.WHP*100);
-    fprintf(stderr, "READ_MISSES\t%zu (%.2f%%)\n", s.RM, s.RMP*100);
-    fprintf(stderr, "WRITE_MISSES\t%zu (%.2f%%)\n", s.WM, s.WMP*100);
-    fprintf(stderr, "EVICTIONS\t%zu (%.2f%%)\n", s.nE, s.EP*100);
+    fprintf(f, "------------ Cache Statistics ------------\n");
+    // use fprintf, since it's nicer
+    fprintf(f, "READ_HITS\t%zu (%.2f%%)\n", s.RH, s.RHP*100);
+    fprintf(f, "WRITE_HITS\t%zu (%.2f%%)\n", s.WH, s.WHP*100);
+    fprintf(f, "READ_MISSES\t%zu (%.2f%%)\n", s.RM, s.RMP*100);
+    fprintf(f, "WRITE_MISSES\t%zu (%.2f%%)\n", s.WM, s.WMP*100);
+    fprintf(f, "EVICTIONS\t%zu (%.2f%%)\n", s.nE, s.EP*100);
+
 }
 
-void SimpleCache::dumpBinaryStats(char *outputDir) {
+void SimpleCache::dumpTextStats(const char * const outputFilepath) {
+    FILE *f = fopen(outputFilepath, "a");
+    dumpTextStats(f);
+    fclose(f);
+}
+
+
+void SimpleCache::dumpBinaryStats(const char * const outputFilepath) {
     fprintf(stderr, "There were %zu addrs in the missed-addresses log\n",
             misses.size());
 
-    std::stringstream outFilename;
-    // use the caller's own TID as a cheap way of disambiguating dumps from
-    // multiple threads.
-    outFilename << outputDir << "/" << syscall(SYS_gettid) << ".npbin";
-
-    std::ofstream of(outFilename.str(), std::ios::out | std::ios::binary);
+    std::ofstream of(outputFilepath, std::ios::out | std::ios::binary);
 
     for (auto &kv : misses) {
         // write the combined 3-tuple (addr, nReads, nWrites) to the file
@@ -261,15 +264,10 @@ void HistogramCounter::zeroStatsCounters() {
     hist.clear();
 }
 
-void HistogramCounter::dumpBinaryStats(char *outputDir) {
+void HistogramCounter::dumpBinaryStats(const char * const outputFilepath) {
     fprintf(stderr, "Dumping binary stats...\n");
 
-    std::stringstream outFilename;
-    // use the caller's own TID as a cheap way of disambiguating dumps from
-    // multiple threads.
-    outFilename << outputDir << "/" << syscall(SYS_gettid) << ".npbin";
-
-    std::ofstream of(outFilename.str(), std::ios::out | std::ios::binary);
+    std::ofstream of(outputFilepath, std::ios::out | std::ios::binary);
 
     for (auto &kv : hist) {
         // write the combined 3-tuple (addr, nReads, nWrites) to the file
@@ -303,21 +301,28 @@ void Network::zeroStatsCounters() {
     destBytes.clear();
 }
 
-void Network::printStats() {
-    std::cerr << "------------ Network Statistics ------------" << std::endl;
+void Network::dumpTextStats(FILE * const f) {
+    fprintf(f, "------------ Network Statistics ------------\n");
 
     // just do the total summation within the print loop itself
     size_t totalBytesSent = 0;
     for (auto &kv : destBytes) {
         int dest = kv.first;
         size_t nBytes = kv.second;
-        fprintf(stderr, "%d => %d : %zu bytes\n", ourGlobalRank, dest, nBytes);
+        fprintf(f, "%d => %d : %zu bytes\n", ourGlobalRank, dest, nBytes);
 
         totalBytesSent += nBytes;
     }
 
-    fprintf(stderr, "Total bytes sent by us (%d): %zu\n", ourGlobalRank,
+    fprintf(f, "Total bytes sent by us (%d): %zu\n", ourGlobalRank,
             totalBytesSent);
+
+}
+
+void Network::dumpTextStats(const char * const outputFilepath) {
+    FILE *f = fopen(outputFilepath, "a");
+    dumpTextStats(f);
+    fclose(f);
 }
 
 
@@ -426,19 +431,19 @@ void Cache::zeroStatsCounters() {
     memset(&s, 0, sizeof(s));
 }
 
-void Cache::printStats() {
+void Cache::dumpTextStats(FILE * const f) {
     if (!s.computedFinalStats) {
-        std::cerr << "Stats not computed yet; computing..." << std::endl;
+        fprintf(f, "Stats not computed yet; computing...\n");
         computeStats();
     }
 
-    std::cerr << "------------ Cache Statistics ------------" << std::endl;
+    fprintf(f, "------------ Cache Statistics ------------\n");
     // use printf, since it's nicer
-    fprintf(stderr, "L1:    RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L1RH,
+    fprintf(f, "L1:    RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L1RH,
             s.L1RHP*100, s.L1WH, s.L1WHP*100);
-    fprintf(stderr, "L2:    RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L2RH,
+    fprintf(f, "L2:    RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L2RH,
             s.L2RHP*100, s.L2WH, s.L2WHP*100);
-    fprintf(stderr, "Mem:   RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L2RM,
+    fprintf(f, "Mem:   RH: %zu (%.2f%%)    WH: %zu (%.2f%%)\n", s.L2RM,
             s.L2RMP*100, s.L2WM, s.L2WMP*100);
 }
 

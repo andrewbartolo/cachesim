@@ -38,8 +38,9 @@ class SimpleCache {
         void computeStats();
         stats_t *getStats();
         void zeroStatsCounters();
-        void printStats();
-        void dumpBinaryStats(char *outputDir);
+        void dumpTextStats(FILE * const outputFile);
+        void dumpTextStats(const char * const outputFilepath);
+        void dumpBinaryStats(const char * const outputFilepath);
 
         // TODO forward (to higher cache levels or memory/RAMulator)
 
@@ -84,7 +85,8 @@ class Network {
         void setOurGlobalRank(int ourGlobalRank);
         void sendTo(int destID, size_t nBytes);
         void zeroStatsCounters();
-        void printStats();
+        void dumpTextStats(FILE * const outputFile);
+        void dumpTextStats(const char * const outputFilepath);
 
     private:
         int ourGlobalRank;
@@ -97,7 +99,7 @@ class HistogramCounter {
         HistogramCounter(size_t bytesPerWord);
         void access(uintptr_t addr, bool isWrite);
         void zeroStatsCounters();
-        void dumpBinaryStats(char *outputDir);
+        void dumpBinaryStats(const char * const outputFilepath);
 
     private:
         typedef struct {
@@ -130,7 +132,7 @@ class Cache {
         void computeStats();
         stats_t *getStats();
         void zeroStatsCounters();
-        void printStats();
+        void dumpTextStats(FILE * const outputFile);
 
 
     protected:

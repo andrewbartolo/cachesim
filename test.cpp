@@ -31,7 +31,7 @@ void test1() {
     assert(s->L1RH == nBytes - 2);  // all but initial line byte will be hits
     assert(s->L2RM == nBytes/64);   // floor of num. "first bytes in line"
 
-    c.printStats();
+    c.dumpTextStats(stderr);
     printf("%s complete.\n", __func__);
 }
 
@@ -61,7 +61,7 @@ void test2() {
     }
 
 
-    c.printStats();
+    c.dumpTextStats(stderr);
     auto s = c.getStats();
     assert(s->L1RH == 0);
     assert(s->L2RM == nLines);  // from pass 1
@@ -97,7 +97,7 @@ void test3() {
     }
 
 
-    c.printStats();
+    c.dumpTextStats(stderr);
     auto s = c.getStats();
     assert(s->L1RH == 0);
     assert(s->L2RH == 0);
@@ -133,7 +133,7 @@ void test4() {
     }
 
 
-    c.printStats();
+    c.dumpTextStats(stderr);
     auto s = c.getStats();
     assert(s->L1RH == nLines/2);
     assert(s->L1WH == nLines/2);
@@ -169,7 +169,7 @@ void test5() {
     }
 
     // ensure that all of these are misses (since reads don't fault in)
-    c.printStats();
+    c.dumpTextStats(stderr);
     auto s = c.getStats();
     assert(s->RH == 0);
 
@@ -216,7 +216,7 @@ void test6() {
 
 
     // ensure that number of hit
-    c.printStats();
+    c.dumpTextStats(stderr);
     auto s = c.getStats();
 
     assert(s->RM == nLines);
