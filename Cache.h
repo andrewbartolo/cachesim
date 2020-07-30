@@ -33,7 +33,8 @@ class SimpleCache {
         } stats_t;
 
         SimpleCache(size_t nLines, size_t nWays, size_t nBanks,
-                size_t cacheLineNBytes, bool allocateOnWritesOnly);
+                size_t cacheLineNBytes, bool allocateOnWritesOnly,
+                bool trackCompulsoryWrites);
         uint64_t getCacheLineSizeLog2();
         void computeStats();
         stats_t *getStats();
@@ -48,6 +49,7 @@ class SimpleCache {
         size_t nLines, nWays, nSetsPerBank, nBanks;
         size_t cacheLineSizeLog2;
         bool allocateOnWritesOnly;  // act like a write-only buffer
+        bool trackCompulsoryWrites;
 
         typedef struct {
             int64_t nReads;
@@ -56,6 +58,7 @@ class SimpleCache {
 
         stats_t s;
         std::unordered_map<line_addr_t, miss_stats_t> misses;
+        std::unordered_map<line_addr_t, int64_t> compulsory;
 
         inline line_addr_t addrToLineAddr(intptr_t addr);
         inline uint32_t fastHash(line_addr_t lineAddr, uint64_t maxSize);
@@ -66,7 +69,8 @@ class SimpleCache {
 class LRUSimpleCache : public SimpleCache {
     public:
         LRUSimpleCache(size_t nLines, size_t nWays, size_t nBanks,
-                size_t cacheLineNBytes, bool allocateOnWritesOnly);
+                size_t cacheLineNBytes, bool allocateOnWritesOnly, bool
+                trackCompulsoryWrites);
         void access(uintptr_t addr, bool isWrite);
         bool touchLine(line_addr_t lineAddr, map_t &map, list_t &list,
                 size_t nWays, bool allocateOnWritesOnly, bool isWrite);

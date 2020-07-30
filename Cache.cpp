@@ -21,7 +21,8 @@
 
 /* Base class definitions */
 SimpleCache::SimpleCache(size_t nLines, size_t nWays, size_t nBanks,
-        size_t cacheLineNBytes, bool allocateOnWritesOnly) {
+        size_t cacheLineNBytes, bool allocateOnWritesOnly,
+        bool trackCompulsoryWrites) {
     this->nLines = nLines;
     this->nWays = nWays;
     assert(nLines % nWays == 0);
@@ -34,6 +35,7 @@ SimpleCache::SimpleCache(size_t nLines, size_t nWays, size_t nBanks,
 
     this->cacheLineSizeLog2 = log2(cacheLineNBytes);
     this->allocateOnWritesOnly = allocateOnWritesOnly;
+    this->trackCompulsoryWrites = trackCompulsoryWrites;
 }
 
 inline uint32_t SimpleCache::fastHash(line_addr_t lineAddr, uint64_t maxSize) {
@@ -67,6 +69,10 @@ void SimpleCache::logMiss(line_addr_t line, bool isWrite) {
     }
     else {
         isWrite ? ++(it->second.nWrites) : ++(it->second.nReads);
+    }
+
+    if (trackCompulsoryWrites) {
+        isWrite ? ++compulsory[line] : compulsory[line] = 0;
     }
 }
 
@@ -149,13 +155,25 @@ void SimpleCache::dumpBinaryStats(const char * const outputFilepath) {
     }
 
     of.close();
+
+    // TODO COMPULSORY
+    std::ofstream of2(std::string(outputFilepath) + "comp", std::ios::out | std::ios::binary);
+
+    for (auto &kv2 : compulsory) {
+        of2.write((char *)&kv2.first, sizeof(kv2.first));
+        of2.write((char *)&kv2.second, sizeof(kv2.second));
+    }
+
+    of2.close();
 }
 
 
 /* Derived class definitions */
 LRUSimpleCache::LRUSimpleCache(size_t nLines, size_t nWays, size_t nBanks,
-        size_t cacheLineNBytes, bool allocateOnWritesOnly) : SimpleCache(
-        nLines, nWays, nBanks, cacheLineNBytes, allocateOnWritesOnly) {
+        size_t cacheLineNBytes, bool allocateOnWritesOnly, bool
+        trackCompulsoryWrites) : SimpleCache(
+        nLines, nWays, nBanks, cacheLineNBytes, allocateOnWritesOnly,
+        trackCompulsoryWrites) {
 
     // initialize the 2-D maps + lists (to support banks)
     maps = std::vector<std::vector<map_t>>(nBanks,

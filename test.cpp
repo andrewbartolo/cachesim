@@ -150,7 +150,7 @@ void test5() {
     printf("Running %s...\n", __func__);
 
     /* nLines, nWays, nBanks, cacheLineNBytes, allocateOnWritesOnly */
-    auto c = LRUSimpleCache(1048576, 8, 1, 64, true);
+    auto c = LRUSimpleCache(1048576, 8, 1, 64, true, false);
 
     size_t nLines = 1048576;
     size_t lineSize = 64;
@@ -184,7 +184,7 @@ void test6() {
     printf("Running %s...\n", __func__);
 
     /* nLines, nWays, nBanks, cacheLineNBytes, allocateOnWritesOnly */
-    auto c = LRUSimpleCache(1048576, 8, 1, 64, true);
+    auto c = LRUSimpleCache(1048576, 8, 1, 64, true, false);
 
     size_t nLines = 1048576;
     size_t lineSize = 64;
